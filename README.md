@@ -72,14 +72,71 @@ In the source file (e.g., `anisotropic.py`), look for the line:
     s = torch.std(g, dim=(1, 2, 3), keepdim=True)
     m = torch.mean(g, dim=(1, 2, 3), keepdim=True)
     ```
+- Observe whether the inference speed improves.
 
-- This change calculates the standard deviation and mean separately, thus avoiding CPU fallback since torch.std and torch.mean are supported on MPS.
----
+```python
+# Calculation for ro_pos
+mean_pos = torch.mean(cond, dim=(1, 2, 3), keepdim=True)
+var_pos = torch.mean((cond - mean_pos) ** 2, dim=(1, 2, 3), keepdim=True)
+ro_pos = torch.sqrt(var_pos)
+
+# Calculation for ro_cfg
+mean_cfg = torch.mean(x_cfg, dim=(1, 2, 3), keepdim=True)
+var_cfg = torch.mean((x_cfg - mean_cfg) ** 2, dim=(1, 2, 3), keepdim=True)
+ro_cfg = torch.sqrt(var_cfg)
+```
+
+### Usage of `torch.std_mean` in `adaptive_anisotropic_filter`
+
+In the function `adaptive_anisotropic_filter`, `torch.std_mean` is used:
+
+```python
+s, m = torch.std_mean(g, dim=(1, 2, 3), keepdim=True)
+```
+  - Change the line into
+```python
+m = torch.mean(g, dim=(1, 2, 3), keepdim=True)
+var = torch.mean((g - m) ** 2, dim=(1, 2, 3), keepdim=True)
+s = torch.sqrt(var + 1e-5)  # Kleine Konstante hinzufügen, um Division durch 0 zu vermeiden
+```
+- This change should result in the operation remaining entirely on the MPS GPU.
+
+
+### Anpassung in external_model_advanced.py
+- Hier finden wir zwei torch.std-Verwendungen in der Klasse RescaleCFG:
+```python
+ro_pos = torch.std(cond, dim=(1, 2, 3), keepdim=True)
+ro_cfg = torch.std(x_cfg, dim=(1, 2, 3), keepdim=True)---
+```
 
 - **Save and test**:
   - Save the changes in `anisotropic.py` and restart Fooocus.
   - Check if the warning for `aten::std_mean.correction` disappears and observe if inference speed improves.
-
+ 
+- Replace torch.std with the combination of mean and variance:
+```python
+# Berechnung für ro_pos
+mean_pos = torch.mean(cond, dim=(1, 2, 3), keepdim=True)
+var_pos = torch.mean((cond - mean_pos) ** 2, dim=(1, 2, 3), keepdim=True)
+ro_pos = torch.sqrt(var_pos)
+# Berechnung für ro_cfg
+mean_cfg = torch.mean(x_cfg, dim=(1, 2, 3), keepdim=True)
+var_cfg = torch.mean((x_cfg - mean_cfg) ** 2, dim=(1, 2, 3), keepdim=True)
+ro_cfg = torch.sqrt(var_cfg)
+```
+### Anpassung in supported_models.py
+- In the supported_models.py file, torch.std is used as follows:
+```python
+if torch.std(out, unbiased=False) > 0.09:
+```
+#Solution
+- Here too, the standard deviation can be replaced by separate mean and variance calculations:
+```python
+mean_out = torch.mean(out)
+var_out = torch.mean((out - mean_out) ** 2)
+std_out = torch.sqrt(var_out)
+if std_out > 0.09:
+```
 ---
 
 By splitting the calculations into separate operations for mean and standard deviation, the computation can remain entirely on the GPU, potentially improving performance significantly.
@@ -90,10 +147,7 @@ By splitting the calculations into separate operations for mean and standard dev
 
 The combined `torch.std_mean` call is not fully supported on the MPS architecture (Apple Silicon) and causes the CPU fallback. By splitting the operations into `torch.std` and `torch.mean`, you ensure that the calculations remain fully on the MPS GPU, as these two operations are supported separately on MPS.
 
+*The error occurs because aten::std_mean.correction is not supported by MPS and therefore falls back to the CPU.
+CUDA and NVIDIA GPUs provide better support for a wide range of operations that are still limited on Apple Silicon.
 
- 
-*Der Fehler tritt auf, weil aten::std_mean.correction von MPS nicht unterstützt wird und daher auf die CPU zurückfällt.
- 
-CUDA und NVIDIA-GPUs bieten eine bessere Unterstützung für eine breite Palette von Operationen, die auf Apple Silicon noch eingeschränkt sind.
- 
-Mögliche Lösungen umfassen alternative Berechnungsstrategien oder Abwarten auf zukünftige PyTorch-Updates, die mehr Unterstützung für MPS bieten könnten.
+Possible solutions include alternative computation strategies or waiting for future PyTorch updates that might provide more support for MPS.
