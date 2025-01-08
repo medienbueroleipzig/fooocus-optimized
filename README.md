@@ -50,9 +50,21 @@ Apple’s MPS backend does not support CUDA, as CUDA is exclusive to NVIDIA GPUs
 
 ## Step-by-Step Guide: Manual Replacement of `<code>torch.std_mean</code>`
 
+
+
 ### 1. Locate the `<code>torch.std_mean</code>` Call
 
 In the source file (e.g., `anisotropic.py`), look for the line:
+### Step-by-Step Guide to Adjustment
+
+1. **Open the file `anisotropic.py`:**
+
+   - Find the line where `torch.std_mean` is used. In your output, the line might look something like this:
+
+   ```python
+   s, m = torch.std_mean(g, dim=(1, 2, 3), keepdim=True)
+
+
 - **Replace `torch.std_mean` with separate `torch.std` and `torch.mean` calculations**:
   - Change the line into two separate calls for `torch.std` and `torch.mean`, like this:
 
