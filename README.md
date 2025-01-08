@@ -73,6 +73,7 @@ In the source file (e.g., `anisotropic.py`), look for the line:
     m = torch.mean(g, dim=(1, 2, 3), keepdim=True)
     ```
 
+- This change calculates the standard deviation and mean separately, thus avoiding CPU fallback since torch.std and torch.mean are supported on MPS.
 ---
 
 - **Save and test**:
